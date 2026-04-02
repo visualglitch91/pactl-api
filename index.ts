@@ -1,17 +1,22 @@
 import { $ } from "bun";
 
 const PORT = Number(process.env.PORT) || 3000;
+const BALANCE_RATIO = Number(process.env.BALANCE_RATIO) || 1;
 
 async function getVolume(): Promise<number> {
   const out = await $`pactl get-sink-volume @DEFAULT_SINK@`.text();
   // Output: "Volume: front-left: 65536 /  100% / 0.00 dB,   front-right: 65536 /  100% / 0.00 dB"
-  const match = out.match(/(\d+)%/);
-  if (!match) throw new Error("Could not parse volume from pactl output");
+  // When BALANCE_RATIO != 1, left channel is amplified — read the right channel as the logical volume
+  const matches = [...out.matchAll(/(\d+)%/g)];
+  if (matches.length === 0) throw new Error("Could not parse volume from pactl output");
+  const match = matches.length >= 2 ? matches[1] : matches[0];
   return Number(match[1]);
 }
 
 async function setVolume(value: number): Promise<void> {
-  await $`pactl set-sink-volume @DEFAULT_SINK@ ${value}%`;
+  const left = `${Math.round(value * BALANCE_RATIO)}%`;
+  const right = `${value}%`;
+  await $`pactl set-sink-volume @DEFAULT_SINK@ ${left} ${right}`;
 }
 
 Bun.serve({
